@@ -1,0 +1,355 @@
+@using ContosoDashboard.Services
+@using ContosoDashboard.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject IDocumentService DocumentService
+@inject IUserService UserService
+
+@if (Documents == null || !Documents.Any())
+{
+    <div class="alert alert-info">@EmptyMessage</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    @if (ShowProjectColumn)
+                    {
+                        <th>Project</th>
+                    }
+                    <th>Uploaded</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var doc in Documents)
+                {
+                    var isOwner = doc.UploadedByUserId == CurrentUserId;
+                    var isManagerOfProject = doc.ProjectId.HasValue && ManagedProjectIds.Contains(doc.ProjectId.Value);
+                    var canDelete = isOwner || IsAdministrator || isManagerOfProject;
+
+                    <tr>
+                        <td>@doc.Title</td>
+                        <td>@doc.Category</td>
+                        @if (ShowProjectColumn)
+                        {
+                            <td>@(doc.Project?.Name ?? "-")</td>
+                        }
+                        <td>@doc.UploadDate.ToString("MMM dd, yyyy")</td>
+                        <td>@FormatSize(doc.FileSizeBytes)</td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                @if (CanPreview(doc))
+                                {
+                                    <button class="btn btn-outline-secondary" @onclick="() => TogglePreview(doc.DocumentId)">
+                                        <i class="bi bi-eye"></i> Preview
+                                    </button>
+                                }
+                                <a class="btn btn-outline-primary" href="/documents/@doc.DocumentId/file?mode=download">
+                                    <i class="bi bi-download"></i> Download
+                                </a>
+                                @if (isOwner)
+                                {
+                                    <button class="btn btn-outline-secondary" @onclick="() => ToggleEdit(doc.DocumentId)">
+                                        <i class="bi bi-pencil"></i> Edit
+                                    </button>
+                                    <button class="btn btn-outline-secondary" @onclick="() => ToggleShare(doc.DocumentId)">
+                                        <i class="bi bi-share"></i> Share
+                                    </button>
+                                }
+                                @if (canDelete)
+                                {
+                                    <button class="btn btn-outline-danger" @onclick="() => ToggleDeleteConfirm(doc.DocumentId)">
+                                        <i class="bi bi-trash"></i> Delete
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+
+                    @if (previewDocumentId == doc.DocumentId)
+                    {
+                        <tr>
+                            <td colspan="6">
+                                @if (IsPdf(doc))
+                                {
+                                    <iframe src="/documents/@doc.DocumentId/file?mode=inline" style="width:100%; height:500px; border:none;"></iframe>
+                                }
+                                else
+                                {
+                                    <img src="/documents/@doc.DocumentId/file?mode=inline" style="max-width:100%; max-height:500px;" />
+                                }
+                            </td>
+                        </tr>
+                    }
+
+                    @if (editDocumentId == doc.DocumentId)
+                    {
+                        <tr>
+                            <td colspan="6">
+                                <div class="card card-body">
+                                    <div class="row g-2">
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Title</label>
+                                            <input class="form-control form-control-sm" @bind="editTitle" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Category</label>
+                                            <select class="form-select form-select-sm" @bind="editCategory">
+                                                @foreach (var category in Enum.GetValues<DocumentCategory>())
+                                                {
+                                                    <option value="@category">@category</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Tags</label>
+                                            <input class="form-control form-control-sm" @bind="editTags" />
+                                        </div>
+                                        <div class="col-md-8">
+                                            <label class="form-label small">Description</label>
+                                            <input class="form-control form-control-sm" @bind="editDescription" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Replace file (optional)</label>
+                                            <InputFile class="form-control form-control-sm" OnChange="OnReplaceFileSelected" />
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(editError))
+                                    {
+                                        <div class="alert alert-danger mt-2 mb-0 py-1">@editError</div>
+                                    }
+                                    <div class="mt-2">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => SaveEdit(doc.DocumentId)">Save</button>
+                                        <button class="btn btn-sm btn-secondary" @onclick="() => ToggleEdit(doc.DocumentId)">Cancel</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+
+                    @if (shareDocumentId == doc.DocumentId)
+                    {
+                        <tr>
+                            <td colspan="6">
+                                <div class="card card-body">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Share with</label>
+                                            <select class="form-select form-select-sm" @bind="shareRecipientUserId">
+                                                <option value="0">Select a user</option>
+                                                @if (allUsers != null)
+                                                {
+                                                    @foreach (var u in allUsers.Where(u => u.UserId != CurrentUserId))
+                                                    {
+                                                        <option value="@u.UserId">@u.DisplayName</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => SaveShare(doc.DocumentId)">Share</button>
+                                            <button class="btn btn-sm btn-secondary" @onclick="() => ToggleShare(doc.DocumentId)">Cancel</button>
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(shareMessage))
+                                    {
+                                        <div class="alert alert-info mt-2 mb-0 py-1">@shareMessage</div>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+
+                    @if (deleteConfirmDocumentId == doc.DocumentId)
+                    {
+                        <tr>
+                            <td colspan="6">
+                                <div class="alert alert-warning d-flex justify-content-between align-items-center mb-0">
+                                    <span>Are you sure you want to delete "@doc.Title"? This cannot be undone.</span>
+                                    <span>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => ConfirmDelete(doc.DocumentId)">Yes, delete</button>
+                                        <button class="btn btn-sm btn-secondary" @onclick="() => ToggleDeleteConfirm(doc.DocumentId)">Cancel</button>
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public List<Document>? Documents { get; set; }
+    [Parameter] public int CurrentUserId { get; set; }
+    [Parameter] public bool IsAdministrator { get; set; }
+    [Parameter] public HashSet<int> ManagedProjectIds { get; set; } = new();
+    [Parameter] public bool ShowProjectColumn { get; set; } = true;
+    [Parameter] public string EmptyMessage { get; set; } = "No documents found.";
+    [Parameter] public EventCallback OnDocumentChanged { get; set; }
+
+    private int? previewDocumentId;
+    private int? editDocumentId;
+    private int? shareDocumentId;
+    private int? deleteConfirmDocumentId;
+
+    private string editTitle = string.Empty;
+    private string? editDescription;
+    private DocumentCategory editCategory;
+    private string? editTags;
+    private string? editError;
+    private IBrowserFile? replacementFile;
+
+    private int shareRecipientUserId;
+    private string? shareMessage;
+    private List<User>? allUsers;
+
+    private void TogglePreview(int documentId)
+    {
+        previewDocumentId = previewDocumentId == documentId ? null : documentId;
+    }
+
+    private void ToggleEdit(int documentId)
+    {
+        if (editDocumentId == documentId)
+        {
+            editDocumentId = null;
+            return;
+        }
+
+        var doc = Documents!.First(d => d.DocumentId == documentId);
+        editTitle = doc.Title;
+        editDescription = doc.Description;
+        editCategory = doc.Category;
+        editTags = doc.Tags;
+        editError = null;
+        replacementFile = null;
+        editDocumentId = documentId;
+    }
+
+    private void OnReplaceFileSelected(InputFileChangeEventArgs e)
+    {
+        replacementFile = e.File;
+    }
+
+    private async Task SaveEdit(int documentId)
+    {
+        editError = null;
+        try
+        {
+            if (replacementFile != null)
+            {
+                using var memoryStream = new MemoryStream();
+                await using (var browserStream = replacementFile.OpenReadStream(maxAllowedSize: DocumentConstraints.MaxFileSizeBytes))
+                {
+                    await browserStream.CopyToAsync(memoryStream);
+                }
+                memoryStream.Position = 0;
+
+                var replaceRequest = new DocumentUploadRequest
+                {
+                    FileStream = memoryStream,
+                    OriginalFileName = replacementFile.Name,
+                    FileType = replacementFile.ContentType,
+                    FileSizeBytes = replacementFile.Size
+                };
+
+                await DocumentService.ReplaceFileAsync(documentId, replaceRequest, CurrentUserId);
+            }
+
+            var update = new DocumentMetadataUpdate
+            {
+                Title = editTitle,
+                Description = editDescription,
+                Category = editCategory,
+                Tags = editTags
+            };
+
+            await DocumentService.UpdateMetadataAsync(documentId, update, CurrentUserId);
+
+            editDocumentId = null;
+            await OnDocumentChanged.InvokeAsync();
+        }
+        catch (DocumentValidationException ex)
+        {
+            editError = ex.Message;
+        }
+        catch (IOException)
+        {
+            editError = "The selected file exceeds the 25 MB limit.";
+        }
+    }
+
+    private async Task ToggleShare(int documentId)
+    {
+        if (shareDocumentId == documentId)
+        {
+            shareDocumentId = null;
+            return;
+        }
+
+        allUsers ??= await UserService.GetAllUsersAsync();
+        shareRecipientUserId = 0;
+        shareMessage = null;
+        shareDocumentId = documentId;
+    }
+
+    private async Task SaveShare(int documentId)
+    {
+        if (shareRecipientUserId <= 0)
+        {
+            shareMessage = "Please select a user to share with.";
+            return;
+        }
+
+        var success = await DocumentService.ShareAsync(documentId, shareRecipientUserId, CurrentUserId);
+        shareMessage = success ? "Document shared successfully." : "Unable to share this document.";
+
+        if (success)
+        {
+            await OnDocumentChanged.InvokeAsync();
+        }
+    }
+
+    private void ToggleDeleteConfirm(int documentId)
+    {
+        deleteConfirmDocumentId = deleteConfirmDocumentId == documentId ? null : documentId;
+    }
+
+    private async Task ConfirmDelete(int documentId)
+    {
+        await DocumentService.DeleteAsync(documentId, CurrentUserId);
+        deleteConfirmDocumentId = null;
+        await OnDocumentChanged.InvokeAsync();
+    }
+
+    private bool CanPreview(Document doc)
+    {
+        var type = doc.FileType?.ToLowerInvariant() ?? string.Empty;
+        return type.Contains("pdf") || type.Contains("jpeg") || type.Contains("jpg") || type.Contains("png");
+    }
+
+    private bool IsPdf(Document doc)
+    {
+        return (doc.FileType?.ToLowerInvariant() ?? string.Empty).Contains("pdf");
+    }
+
+    private string FormatSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / (1024.0 * 1024.0):0.0} MB";
+        }
+        if (bytes >= 1024)
+        {
+            return $"{bytes / 1024.0:0.0} KB";
+        }
+        return $"{bytes} B";
+    }
+}

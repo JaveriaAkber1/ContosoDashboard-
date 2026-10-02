@@ -1,10 +1,13 @@
 @page "/projects/{projectId:int}"
 @using ContosoDashboard.Services
 @using ContosoDashboard.Models
+@using ContosoDashboard.Shared
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @attribute [Authorize]
 @inject IProjectService ProjectService
+@inject IDocumentService DocumentService
+@inject IUserService UserService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -198,6 +201,28 @@
                     </div>
                 </div>
 
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Project Documents</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (projectDocuments == null)
+                        {
+                            <p><em>Loading...</em></p>
+                        }
+                        else
+                        {
+                            <DocumentListTable Documents="projectDocuments"
+                                               CurrentUserId="currentUserId"
+                                               IsAdministrator="isAdministrator"
+                                               ManagedProjectIds="managedProjectIds"
+                                               ShowProjectColumn="false"
+                                               EmptyMessage="No documents have been added to this project yet."
+                                               OnDocumentChanged="LoadProjectDocuments" />
+                        }
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">Statistics</h5>
@@ -238,6 +263,9 @@
 
     private Project? project;
     private int currentUserId = 0;
+    private bool isAdministrator;
+    private HashSet<int> managedProjectIds = new();
+    private List<Document>? projectDocuments;
 
     protected override async Task OnInitializedAsync()
     {
@@ -253,12 +281,28 @@
         if (currentUserId > 0)
         {
             project = await ProjectService.GetProjectByIdAsync(ProjectId, currentUserId);
+
+            var currentUser = await UserService.GetUserByIdAsync(currentUserId);
+            isAdministrator = currentUser?.Role == UserRole.Administrator;
         }
         
         if (project == null)
         {
             NavigationManager.NavigateTo("/projects");
+            return;
         }
+
+        if (project.ProjectManagerId == currentUserId)
+        {
+            managedProjectIds.Add(project.ProjectId);
+        }
+
+        await LoadProjectDocuments();
+    }
+
+    private async Task LoadProjectDocuments()
+    {
+        projectDocuments = await DocumentService.GetProjectDocumentsAsync(ProjectId, currentUserId);
     }
 
     private string GetStatusColor(ProjectStatus status)
