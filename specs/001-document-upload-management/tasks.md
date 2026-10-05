@@ -71,7 +71,7 @@ Single project (existing `ContosoDashboard/` Blazor Server app — see plan.md P
 - [X] T019 [US1] Add a basic "My Documents" list section to ContosoDashboard/Pages/Documents.razor rendering `GetMyDocumentsAsync` results (title, category, upload date, file size, associated project) with a download link to `DocumentDownload` (depends on T015, T017, T018)
 - [X] T020 [US1] Add a "Documents" link to ContosoDashboard/Shared/NavMenu.razor pointing to `/documents`
 - [X] T021 [US1] Add a minimal "Project Documents" section to ContosoDashboard/Pages/ProjectDetails.razor listing documents associated with the current project (basic project-filtered query against `IDocumentService`) with download links (depends on T015, T017)
-- [ ] T022 [US1] Manual validation: run quickstart.md Scenario 1 (valid upload success, >25 MB rejection, unsupported-type rejection, EICAR malware rejection) and fix any issues found
+- [X] T022 [US1] Manual validation: run quickstart.md Scenario 1 (valid upload success, >25 MB rejection, unsupported-type rejection, EICAR malware rejection) and fix any issues found
 
 **Checkpoint**: User Story 1 is fully functional and independently testable
 
@@ -92,7 +92,7 @@ Single project (existing `ContosoDashboard/` Blazor Server app — see plan.md P
 - [X] T027 [US2] Replace the minimal Project Documents section in ContosoDashboard/Pages/ProjectDetails.razor with the full `GetProjectDocumentsAsync`-backed view, visible to all project members with download links (depends on T024)
 - [X] T028 [US2] Add a search input and results list to ContosoDashboard/Pages/Documents.razor calling `SearchAsync`, including an explicit "no results" empty state (depends on T025)
 - [X] T029 [US2] Add `mode=inline` handling to ContosoDashboard/Pages/DocumentDownload.cshtml.cs (`Content-Disposition: inline` with the document's `FileType`) and add a preview action (`<iframe>`/`<img>`) limited to PDF/JPEG/PNG documents in ContosoDashboard/Pages/Documents.razor and ContosoDashboard/Pages/ProjectDetails.razor (depends on T017, T019, T027)
-- [ ] T030 [US2] Manual validation: run quickstart.md Scenario 2 (sorting, filtering, project view visibility, search including empty-result state, in-browser preview, correct downloaded filename) and fix any issues found
+- [X] T030 [US2] Manual validation: run quickstart.md Scenario 2 (sorting, filtering, project view visibility, search including empty-result state, in-browser preview, correct downloaded filename) and fix any issues found
 
 **Checkpoint**: User Stories 1 AND 2 both work independently
 
@@ -121,7 +121,7 @@ Single project (existing `ContosoDashboard/` Blazor Server app — see plan.md P
 - [X] T043 [US3] Add document attachment UI to the task detail view in ContosoDashboard/Pages/Tasks.razor: attach an existing document or upload a new one via `IDocumentService.UploadAsync`, creating a `TaskDocument` row and auto-setting `Document.ProjectId` from the task's `ProjectId` when previously unset (depends on T033, T014)
 - [X] T044 [US3] Verify that deleting a document (`DeleteAsync`) silently removes it from any task's attachment list via the `TaskDocument` cascade, with no placeholder or "[Deleted document]" marker shown in the task UI (depends on T037, T043)
 - [X] T045 [US3] Add a "Recent Documents" widget (5 most recent documents via `GetMyDocumentsAsync` ordered by `UploadDate`) and a document count summary card to ContosoDashboard/Pages/Index.razor, extending `IDashboardService.GetDashboardSummaryAsync` in ContosoDashboard/Services/DashboardService.cs to include a document count (depends on T015)
-- [ ] T046 [US3] Manual validation: run quickstart.md Scenario 3 (metadata edit, file replace, share with no edit/delete rights for recipient, unauthorized-delete denial, Project-Manager delete with cascade and silent task-attachment removal, task attach/upload, project-upload notification, dashboard widget/count update) and fix any issues found
+- [X] T046 [US3] Manual validation: run quickstart.md Scenario 3 (metadata edit, file replace, share with no edit/delete rights for recipient, unauthorized-delete denial, Project-Manager delete with cascade and silent task-attachment removal, task attach/upload, project-upload notification, dashboard widget/count update) and fix any issues found
 
 **Checkpoint**: All user stories are independently functional
 
