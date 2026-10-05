@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @attribute [Authorize]
 @inject ITaskService TaskService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>My Tasks - ContosoDashboard</PageTitle>
@@ -124,10 +125,68 @@
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewTaskDetails(task.TaskId)">
-                                    <i class="bi bi-eye"></i>
+                                    <i class="bi bi-eye"></i> Documents
                                 </button>
                             </td>
                         </tr>
+                        @if (expandedTaskId == task.TaskId)
+                        {
+                            <tr>
+                                <td colspan="6">
+                                    <div class="card card-body">
+                                        <h6>Attached Documents</h6>
+                                        @if (taskDocuments == null)
+                                        {
+                                            <p><em>Loading...</em></p>
+                                        }
+                                        else if (!taskDocuments.Any())
+                                        {
+                                            <p class="text-muted">No documents attached to this task.</p>
+                                        }
+                                        else
+                                        {
+                                            <ul class="list-group mb-3">
+                                                @foreach (var doc in taskDocuments)
+                                                {
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        <span>
+                                                            <a href="/documents/@doc.DocumentId/file?mode=download">@doc.Title</a>
+                                                            <small class="text-muted"> (@doc.Category)</small>
+                                                        </span>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DetachDocument(task.TaskId, doc.DocumentId)">
+                                                            <i class="bi bi-x-circle"></i> Remove
+                                                        </button>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        }
+
+                                        <div class="row g-2 align-items-end">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">Attach one of my documents</label>
+                                                <select class="form-select form-select-sm" @bind="selectedDocumentIdToAttach">
+                                                    <option value="0">Select a document</option>
+                                                    @if (myDocuments != null)
+                                                    {
+                                                        @foreach (var doc in myDocuments)
+                                                        {
+                                                            <option value="@doc.DocumentId">@doc.Title</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <button class="btn btn-sm btn-primary" @onclick="() => AttachDocument(task.TaskId)">Attach</button>
+                                            </div>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(attachMessage))
+                                        {
+                                            <div class="alert alert-info mt-2 mb-0 py-1">@attachMessage</div>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -140,6 +199,12 @@
     private string filterStatus = "";
     private string filterPriority = "";
     private int currentUserId = 0;
+
+    private int? expandedTaskId;
+    private List<Document>? taskDocuments;
+    private List<Document>? myDocuments;
+    private int selectedDocumentIdToAttach;
+    private string? attachMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,9 +250,44 @@
         // TODO: Implement modal dialog for creating tasks
     }
 
-    private void ViewTaskDetails(int taskId)
+    private async Task ViewTaskDetails(int taskId)
     {
-        // TODO: Navigate to task details or show modal
+        if (expandedTaskId == taskId)
+        {
+            expandedTaskId = null;
+            return;
+        }
+
+        expandedTaskId = taskId;
+        attachMessage = null;
+        selectedDocumentIdToAttach = 0;
+        taskDocuments = null;
+        taskDocuments = await DocumentService.GetTaskDocumentsAsync(taskId, currentUserId);
+        myDocuments ??= await DocumentService.GetMyDocumentsAsync(currentUserId);
+    }
+
+    private async Task AttachDocument(int taskId)
+    {
+        if (selectedDocumentIdToAttach <= 0)
+        {
+            attachMessage = "Please select a document to attach.";
+            return;
+        }
+
+        var success = await DocumentService.AttachToTaskAsync(taskId, selectedDocumentIdToAttach, currentUserId);
+        attachMessage = success ? null : "Unable to attach this document.";
+
+        if (success)
+        {
+            taskDocuments = await DocumentService.GetTaskDocumentsAsync(taskId, currentUserId);
+            selectedDocumentIdToAttach = 0;
+        }
+    }
+
+    private async Task DetachDocument(int taskId, int documentId)
+    {
+        await DocumentService.DetachFromTaskAsync(taskId, documentId, currentUserId);
+        taskDocuments = await DocumentService.GetTaskDocumentsAsync(taskId, currentUserId);
     }
 
     private string GetPriorityColor(TaskPriority priority)

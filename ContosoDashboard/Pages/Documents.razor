@@ -1,0 +1,397 @@
+@page "/documents"
+@using ContosoDashboard.Services
+@using ContosoDashboard.Models
+@using ContosoDashboard.Shared
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Security.Claims
+@attribute [Authorize]
+@inject IDocumentService DocumentService
+@inject IProjectService ProjectService
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Documents - ContosoDashboard</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Documents</h1>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col">
+            <ul class="nav nav-tabs">
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "mine" ? "active" : "")" @onclick='() => SwitchTab("mine")'>My Documents</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "shared" ? "active" : "")" @onclick='() => SwitchTab("shared")'>Shared with Me</button>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    @if (activeTab == "mine")
+    {
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Upload a Document</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="this" OnValidSubmit="HandleUpload">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Title</label>
+                            <input class="form-control" @bind="uploadTitle" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Category</label>
+                            <select class="form-select" @bind="uploadCategory">
+                                @foreach (var category in Enum.GetValues<DocumentCategory>())
+                                {
+                                    <option value="@category">@category</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Description (optional)</label>
+                            <input class="form-control" @bind="uploadDescription" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Project (optional)</label>
+                            <select class="form-select" @bind="uploadProjectId">
+                                <option value="">None</option>
+                                @if (myProjects != null)
+                                {
+                                    @foreach (var project in myProjects)
+                                    {
+                                        <option value="@project.ProjectId">@project.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tags (optional, comma-separated)</label>
+                            <input class="form-control" @bind="uploadTags" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">File</label>
+                            <InputFile class="form-control" OnChange="OnFileSelected" />
+                        </div>
+                    </div>
+
+                    @if (isUploading)
+                    {
+                        <div class="progress mt-3">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%">Uploading...</div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(uploadError))
+                    {
+                        <div class="alert alert-danger mt-3">@uploadError</div>
+                    }
+                    @if (!string.IsNullOrEmpty(uploadSuccess))
+                    {
+                        <div class="alert alert-success mt-3">@uploadSuccess</div>
+                    }
+
+                    <button type="submit" class="btn btn-primary mt-3" disabled="@isUploading">
+                        <i class="bi bi-upload"></i> Upload
+                    </button>
+                </EditForm>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Search</h5>
+            </div>
+            <div class="card-body">
+                <div class="input-group">
+                    <input class="form-control" placeholder="Search by title, description, tags, uploader, or project" @bind="searchQuery" @bind:event="oninput" />
+                    <button class="btn btn-outline-secondary" @onclick="HandleSearch">Search</button>
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch">Clear</button>
+                </div>
+
+                @if (searchResults != null)
+                {
+                    <div class="mt-3">
+                        <DocumentListTable Documents="searchResults"
+                                           CurrentUserId="currentUserId"
+                                           IsAdministrator="isAdministrator"
+                                           ManagedProjectIds="managedProjectIds"
+                                           EmptyMessage="No results found."
+                                           OnDocumentChanged="HandleDocumentChanged" />
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">My Documents</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label small">Filter by Category</label>
+                        <select class="form-select form-select-sm" @bind="filterCategory" @bind:after="LoadMyDocuments">
+                            <option value="">All</option>
+                            @foreach (var category in Enum.GetValues<DocumentCategory>())
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">From Date</label>
+                        <input type="date" class="form-control form-control-sm" @bind="filterFromDate" @bind:after="LoadMyDocuments" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">To Date</label>
+                        <input type="date" class="form-control form-control-sm" @bind="filterToDate" @bind:after="LoadMyDocuments" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Sort by</label>
+                        <select class="form-select form-select-sm" @bind="sortBy" @bind:after="LoadMyDocuments">
+                            <option value="UploadDate">Upload Date</option>
+                            <option value="Title">Title</option>
+                            <option value="Category">Category</option>
+                            <option value="Size">File Size</option>
+                        </select>
+                    </div>
+                </div>
+
+                @if (myDocuments == null)
+                {
+                    <p><em>Loading...</em></p>
+                }
+                else
+                {
+                    <DocumentListTable Documents="myDocuments"
+                                       CurrentUserId="currentUserId"
+                                       IsAdministrator="isAdministrator"
+                                       ManagedProjectIds="managedProjectIds"
+                                       EmptyMessage="No documents found."
+                                       OnDocumentChanged="HandleDocumentChanged" />
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Shared with Me</h5>
+            </div>
+            <div class="card-body">
+                @if (sharedDocuments == null)
+                {
+                    <p><em>Loading...</em></p>
+                }
+                else
+                {
+                    <DocumentListTable Documents="sharedDocuments"
+                                       CurrentUserId="currentUserId"
+                                       IsAdministrator="isAdministrator"
+                                       ManagedProjectIds="managedProjectIds"
+                                       EmptyMessage="No documents have been shared with you."
+                                       OnDocumentChanged="HandleDocumentChanged" />
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private int currentUserId = 0;
+    private bool isAdministrator;
+    private List<Project>? myProjects;
+    private HashSet<int> managedProjectIds = new();
+
+    private string activeTab = "mine";
+    private List<Document>? myDocuments;
+    private List<Document>? sharedDocuments;
+    private List<Document>? searchResults;
+
+    private string uploadTitle = string.Empty;
+    private string? uploadDescription;
+    private DocumentCategory uploadCategory = DocumentCategory.Other;
+    private string? uploadTags;
+    private int? uploadProjectId;
+    private IBrowserFile? selectedFile;
+    private bool isUploading;
+    private string? uploadError;
+    private string? uploadSuccess;
+
+    private string? filterCategory;
+    private DateTime? filterFromDate;
+    private DateTime? filterToDate;
+    private string sortBy = "UploadDate";
+
+    private string searchQuery = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+        {
+            currentUserId = userId;
+        }
+
+        if (currentUserId > 0)
+        {
+            var currentUser = await UserService.GetUserByIdAsync(currentUserId);
+            isAdministrator = currentUser?.Role == UserRole.Administrator;
+
+            myProjects = await ProjectService.GetUserProjectsAsync(currentUserId);
+            managedProjectIds = myProjects?.Where(p => p.ProjectManagerId == currentUserId).Select(p => p.ProjectId).ToHashSet() ?? new HashSet<int>();
+
+            await LoadMyDocuments();
+            await LoadSharedDocuments();
+        }
+    }
+
+    private void SwitchTab(string tab)
+    {
+        activeTab = tab;
+    }
+
+    private async Task LoadMyDocuments()
+    {
+        var filter = new DocumentListFilter
+        {
+            Category = string.IsNullOrEmpty(filterCategory) ? null : Enum.Parse<DocumentCategory>(filterCategory),
+            FromDate = filterFromDate,
+            ToDate = filterToDate,
+            SortBy = sortBy,
+            SortDescending = true
+        };
+
+        myDocuments = await DocumentService.GetMyDocumentsAsync(currentUserId, filter);
+    }
+
+    private async Task LoadSharedDocuments()
+    {
+        sharedDocuments = await DocumentService.GetSharedWithMeAsync(currentUserId);
+    }
+
+    private async Task HandleSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            searchResults = null;
+            return;
+        }
+
+        searchResults = await DocumentService.SearchAsync(searchQuery, currentUserId);
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = string.Empty;
+        searchResults = null;
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        uploadError = null;
+        uploadSuccess = null;
+        Console.WriteLine($"[Documents] File selected: {selectedFile?.Name} ({selectedFile?.Size} bytes)");
+    }
+
+    private async Task HandleUpload()
+    {
+        Console.WriteLine("[Documents] HandleUpload invoked.");
+        uploadError = null;
+        uploadSuccess = null;
+
+        if (selectedFile == null)
+        {
+            Console.WriteLine("[Documents] HandleUpload: no file selected.");
+            uploadError = "Please select a file.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(uploadTitle))
+        {
+            Console.WriteLine("[Documents] HandleUpload: title missing.");
+            uploadError = "Title is required.";
+            return;
+        }
+
+        isUploading = true;
+        try
+        {
+            using var memoryStream = new MemoryStream();
+            await using (var browserStream = selectedFile.OpenReadStream(maxAllowedSize: DocumentConstraints.MaxFileSizeBytes))
+            {
+                await browserStream.CopyToAsync(memoryStream);
+            }
+            memoryStream.Position = 0;
+            Console.WriteLine($"[Documents] Buffered {memoryStream.Length} bytes for '{selectedFile.Name}'. currentUserId={currentUserId}");
+
+            var request = new DocumentUploadRequest
+            {
+                Title = uploadTitle,
+                Description = uploadDescription,
+                Category = uploadCategory,
+                Tags = uploadTags,
+                ProjectId = uploadProjectId,
+                FileStream = memoryStream,
+                OriginalFileName = selectedFile.Name,
+                FileType = selectedFile.ContentType,
+                FileSizeBytes = selectedFile.Size
+            };
+
+            var uploaded = await DocumentService.UploadAsync(request, currentUserId);
+            Console.WriteLine($"[Documents] Upload succeeded. DocumentId={uploaded.DocumentId}");
+
+            uploadSuccess = "Document uploaded successfully.";
+            uploadTitle = string.Empty;
+            uploadDescription = null;
+            uploadTags = null;
+            uploadProjectId = null;
+            uploadCategory = DocumentCategory.Other;
+            selectedFile = null;
+
+            await LoadMyDocuments();
+            Console.WriteLine($"[Documents] Reloaded my documents, count={myDocuments?.Count}");
+        }
+        catch (DocumentValidationException ex)
+        {
+            Console.WriteLine($"[Documents] Validation error: {ex.Message}");
+            uploadError = ex.Message;
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"[Documents] IOException: {ex}");
+            uploadError = "The selected file exceeds the 25 MB limit.";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Documents] Unexpected error: {ex}");
+            uploadError = "An unexpected error occurred while uploading the document.";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private async Task HandleDocumentChanged()
+    {
+        await LoadMyDocuments();
+        await LoadSharedDocuments();
+        if (searchResults != null)
+        {
+            await HandleSearch();
+        }
+    }
+}

@@ -5,6 +5,7 @@
 @attribute [Authorize]
 @inject IDashboardService DashboardService
 @inject INotificationService NotificationService
+@inject IDocumentService DocumentService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Dashboard - ContosoDashboard</PageTitle>
@@ -52,6 +53,14 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-3 mb-3">
+                <div class="card summary-card">
+                    <div class="card-body">
+                        <h5 class="card-title">My Documents</h5>
+                        <p class="card-text display-4 text-secondary">@summary.TotalDocuments</p>
+                    </div>
+                </div>
+            </div>
         </div>
     }
 
@@ -89,6 +98,9 @@
                 <a href="/notifications" class="list-group-item list-group-item-action">
                     <i class="bi bi-bell"></i> View Notifications
                 </a>
+                <a href="/documents" class="list-group-item list-group-item-action">
+                    <i class="bi bi-file-earmark-text"></i> View Documents
+                </a>
                 <a href="/profile" class="list-group-item list-group-item-action">
                     <i class="bi bi-person"></i> Edit Profile
                 </a>
@@ -118,12 +130,38 @@
             }
         </div>
     </div>
+
+    <div class="row mt-4">
+        <div class="col">
+            <h3>Recent Documents</h3>
+            @if (recentDocuments != null && recentDocuments.Any())
+            {
+                <div class="list-group">
+                    @foreach (var document in recentDocuments.Take(5))
+                    {
+                        <a class="list-group-item list-group-item-action" href="/documents/@document.DocumentId/file?mode=download">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">@document.Title</h6>
+                                <small>@document.UploadDate.ToString("MMM dd, yyyy")</small>
+                            </div>
+                            <p class="mb-1 text-muted small">@document.Category</p>
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">No documents uploaded yet</p>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
     private DashboardSummary? summary;
     private List<Announcement>? announcements;
     private List<Notification>? recentNotifications;
+    private List<Document>? recentDocuments;
     private string userName = "User";
     private int currentUserId = 0;
 
@@ -146,6 +184,7 @@
             summary = await DashboardService.GetDashboardSummaryAsync(currentUserId);
             announcements = await DashboardService.GetActiveAnnouncementsAsync();
             recentNotifications = await NotificationService.GetUserNotificationsAsync(currentUserId);
+            recentDocuments = await DocumentService.GetMyDocumentsAsync(currentUserId, new DocumentListFilter { SortBy = "UploadDate", SortDescending = true });
         }
     }
 
